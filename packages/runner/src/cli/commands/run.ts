@@ -215,8 +215,9 @@ async function executeStep(
 
     // Execute each action in the step
     for (const action of step.actions) {
-      // Try to heal target if needed
-      if (action.target) {
+      // Try to heal target if needed (skip for text-based selectors)
+      if (action.target && !action.target.includes(':')) {
+        // Only use healing for ID-based targets (E001, E002, etc.)
         const resolution = healingEngine.resolveElement(
           action.target,
           beforeUIMap,
@@ -239,6 +240,7 @@ async function executeStep(
           action.target = resolution.element.id;
         }
       }
+      // For text-based selectors (text:xxx, button:xxx), let executor handle it directly
 
       const result = await executor.executeAction(action, beforeUIMap);
 

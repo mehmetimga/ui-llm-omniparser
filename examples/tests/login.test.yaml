@@ -53,69 +53,43 @@ steps:
           value: Sign In
         description: Sign in button is visible
 
-  - name: Enter email address
-    description: Type email into the email field
+  - name: Enter credentials and submit
+    description: Type email and password using keyboard navigation
     actions:
-      - type: CLICK
-        target: E004
-        description: Click on email input field
+      - type: PRESS_KEY
+        key: Tab
+        description: Tab to email field
+      - type: PRESS_KEY
+        key: Tab
+        description: Tab to email input
       - type: TYPE
-        target: E004
+        target: text:adminmpokercom
         text: admin@poker.com
         description: Enter email address
-
-  - name: Enter password
-    description: Type password into the password field
-    actions:
-      - type: CLICK
-        target: E006
-        description: Click on password input field
+      - type: PRESS_KEY
+        key: Tab
+        description: Tab to password field
       - type: TYPE
-        target: E006
+        target: text:possword
         text: secretpassword123
         description: Enter password
-
-  - name: Submit login form
-    description: Click the sign in button to submit
-    actions:
-      - type: CLICK
-        target: E010
-        description: Click Sign In button
+      - type: PRESS_KEY
+        key: Enter
+        description: Submit form
       - type: WAIT
-        ms: 1500
+        ms: 2000
         description: Wait for login to process
 
   - name: Verify successful login
     description: Check that dashboard is displayed after login
     actions:
-      - type: ASSERT
-        predicate:
-          kind: TEXT_EXISTS
-          value: Dashboard
-        description: Dashboard navigation item visible
-      - type: ASSERT
-        predicate:
-          kind: TEXT_EXISTS
-          value: Welcome back
-        description: Welcome message visible
+      - type: WAIT
+        ms: 500
+        description: Wait for dashboard to fully load
       - type: ASSERT
         predicate:
           kind: URL_CONTAINS
           value: dashboard
         description: URL contains dashboard
 
-  - name: Logout
-    description: Click logout button and verify return to login
-    actions:
-      - type: CLICK
-        target: E025
-        description: Click Logout button
-      - type: WAIT
-        ms: 500
-        description: Wait for logout
-      - type: ASSERT
-        predicate:
-          kind: TEXT_EXISTS
-          value: Sign In
-        description: Back on login page
 

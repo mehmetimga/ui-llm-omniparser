@@ -204,15 +204,92 @@ export class PlaywrightExecutor {
 
   /**
    * Get element from UIMap and return its center coordinates
+   * Supports:
+   * - ID lookup: "E001"
+   * - Text-based lookup: "text:Sign In" (finds element containing text in text or caption)
+   * - Role+text lookup: "button:Sign In" (finds button with text)
    */
   private getElementPosition(
     targetId: string,
     uiMap: UIMap
   ): { x: number; y: number } {
-    const element = findElementById(uiMap, targetId);
-    if (!element) {
-      throw new Error(`Element not found: ${targetId}`);
+    let element: UIElement | undefined;
+
+    // Helper to check if element matches search text (checks both text and caption)
+    const matchesText = (el: UIElement, searchText: string): boolean => {
+      const textMatch = el.text.toLowerCase().includes(searchText);
+      const captionMatch = el.caption.toLowerCase().includes(searchText);
+      return textMatch || captionMatch;
+    };
+
+    // Check for text-based selector: "text:Some Text"
+    if (targetId.startsWith('text:')) {
+      const searchText = targetId.slice(5).toLowerCase().trim();
+      
+      // Try exact includes match first
+      element = uiMap.elements.find((el) => matchesText(el, searchText));
+      
+      // If not found, try matching individual words
+      if (!element) {
+        const words = searchText.split(/\s+/).filter(w => w.length > 2);
+        element = uiMap.elements.find((el) => 
+          words.every(word => matchesText(el, word))
+        );
+      }
+      
+      // If still not found, try partial word match
+      if (!element) {
+        const words = searchText.split(/\s+/).filter(w => w.length > 2);
+        element = uiMap.elements.find((el) => 
+          words.some(word => matchesText(el, word))
+        );
+      }
+      
+      if (!element) {
+        // Log available elements for debugging
+        const availableTexts = uiMap.elements
+          .map((el) => `"${el.text}" (${el.role})`)
+          .join(', ');
+        throw new Error(
+          `Element with text "${searchText}" not found. ` +
+          `Available elements: ${availableTexts}`
+        );
+      }
     }
+    // Check for role+text selector: "button:Sign In", "input:Email"
+    else if (targetId.includes(':')) {
+      const colonIndex = targetId.indexOf(':');
+      const role = targetId.slice(0, colonIndex);
+      const searchText = targetId.slice(colonIndex + 1).toLowerCase().trim();
+      
+      // Try to find element matching role and text
+      element = uiMap.elements.find(
+        (el) => el.role === role && matchesText(el, searchText)
+      );
+      
+      if (!element) {
+        // Fallback: try matching just by text if role doesn't match
+        element = uiMap.elements.find((el) => matchesText(el, searchText));
+      }
+      
+      if (!element) {
+        const availableTexts = uiMap.elements
+          .map((el) => `"${el.text}" (${el.role})`)
+          .join(', ');
+        throw new Error(
+          `Element with role "${role}" and text "${searchText}" not found. ` +
+          `Available elements: ${availableTexts}`
+        );
+      }
+    }
+    // Standard ID lookup
+    else {
+      element = findElementById(uiMap, targetId);
+      if (!element) {
+        throw new Error(`Element not found: ${targetId}`);
+      }
+    }
+
     return getElementCenter(element.bbox);
   }
 
