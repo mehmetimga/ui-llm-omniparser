@@ -1,0 +1,160 @@
+# Player Search Test Suite
+# Tests the player search and filtering functionality
+
+metadata:
+  name: Player Search
+  description: Tests player listing, search, and filtering features
+  version: "1.0.0"
+  author: QA Team
+  tags:
+    - players
+    - search
+    - crud
+  app: poker-admin
+  environment:
+    baseUrl: http://localhost:3000
+    viewport:
+      width: 1920
+      height: 1080
+    browser: chromium
+
+setup:
+  - name: Login first
+    description: Authenticate before testing
+    actions:
+      - type: NAVIGATE
+        url: http://localhost:3000
+      - type: WAIT
+        ms: 500
+      - type: TYPE
+        target: E004
+        text: admin@poker.com
+      - type: TYPE
+        target: E006
+        text: password123
+      - type: CLICK
+        target: E010
+      - type: WAIT
+        ms: 1500
+
+steps:
+  - name: Navigate to players page
+    description: Go to the players list page
+    actions:
+      - type: CLICK
+        target: E003
+        description: Click Players navigation item
+      - type: WAIT
+        ms: 800
+        description: Wait for page load
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Players
+        description: Players page header visible
+      - type: ASSERT
+        predicate:
+          kind: URL_CONTAINS
+          value: players
+        description: URL contains players
+
+  - name: Verify player list is displayed
+    description: Check that the player table loads with data
+    actions:
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: PokerKing99
+        description: First player name visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Status
+        description: Status column header visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Balance
+        description: Balance column header visible
+
+  - name: Search for specific player
+    description: Use search to find a player by name
+    actions:
+      - type: CLICK
+        target: E008
+        description: Click search input
+      - type: TYPE
+        target: E008
+        text: HighRoller
+        description: Type player name to search
+      - type: WAIT
+        ms: 500
+        description: Wait for search results
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: HighRoller
+        description: Search result shows HighRoller
+
+  - name: Clear search and filter by status
+    description: Clear search and apply status filter
+    actions:
+      - type: CLICK
+        target: E008
+        description: Click search input
+      - type: PRESS_KEY
+        key: Control+a
+        description: Select all text
+      - type: PRESS_KEY
+        key: Backspace
+        description: Clear search
+      - type: WAIT
+        ms: 300
+      - type: CLICK
+        target: E009
+        description: Click status filter dropdown
+      - type: WAIT
+        ms: 200
+
+  - name: View player details
+    description: Click on a player to view their details
+    actions:
+      - type: CLICK
+        target: E015
+        description: Click first player view button
+      - type: WAIT
+        ms: 800
+        description: Wait for detail page
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Player Information
+        description: Player detail section visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Recent Games
+        description: Recent games section visible
+
+  - name: Go back to players list
+    description: Navigate back to players list
+    actions:
+      - type: CLICK
+        target: E001
+        description: Click back to Players link
+      - type: WAIT
+        ms: 500
+      - type: ASSERT
+        predicate:
+          kind: URL_CONTAINS
+          value: players
+        description: Back on players list
+
+teardown:
+  - name: Logout
+    actions:
+      - type: CLICK
+        target: E025
+      - type: WAIT
+        ms: 500
+

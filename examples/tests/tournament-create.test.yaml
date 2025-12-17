@@ -1,0 +1,179 @@
+# Tournament Creation Test Suite
+# Tests creating and managing tournaments
+
+metadata:
+  name: Tournament Creation
+  description: Tests tournament creation workflow and management
+  version: "1.0.0"
+  author: QA Team
+  tags:
+    - tournaments
+    - crud
+    - critical
+  app: poker-admin
+  environment:
+    baseUrl: http://localhost:3000
+    viewport:
+      width: 1920
+      height: 1080
+    browser: chromium
+
+setup:
+  - name: Login and navigate to tournaments
+    description: Authenticate and go to tournaments page
+    actions:
+      - type: NAVIGATE
+        url: http://localhost:3000
+      - type: WAIT
+        ms: 500
+      - type: TYPE
+        target: E004
+        text: admin@poker.com
+      - type: TYPE
+        target: E006
+        text: password123
+      - type: CLICK
+        target: E010
+      - type: WAIT
+        ms: 1500
+      - type: CLICK
+        target: E004
+        description: Click Tournaments navigation
+      - type: WAIT
+        ms: 800
+
+steps:
+  - name: Verify tournaments page loads
+    description: Check that tournaments page displays correctly
+    actions:
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Tournaments
+        description: Page header visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Create Tournament
+        description: Create button visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Sunday Million
+        description: Existing tournament visible
+
+  - name: Filter tournaments by status
+    description: Test tournament status filters
+    actions:
+      - type: CLICK
+        target: E005
+        description: Click Running filter
+      - type: WAIT
+        ms: 300
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: running
+        description: Running tournaments shown
+      - type: CLICK
+        target: E004
+        description: Click All filter
+      - type: WAIT
+        ms: 300
+
+  - name: Open create tournament modal
+    description: Click button to open tournament creation form
+    actions:
+      - type: CLICK
+        target: E003
+        description: Click Create Tournament button
+      - type: WAIT
+        ms: 500
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Tournament Name
+        description: Form field visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Buy-in
+        description: Buy-in field visible
+
+  - name: Fill tournament details
+    description: Enter tournament information
+    actions:
+      - type: TYPE
+        target: E030
+        text: Test Championship
+        description: Enter tournament name
+      - type: TYPE
+        target: E031
+        text: 50
+        description: Enter buy-in amount
+      - type: TYPE
+        target: E032
+        text: 200
+        description: Enter max players
+      - type: CLICK
+        target: E033
+        description: Click game type dropdown
+      - type: WAIT
+        ms: 200
+
+  - name: Cancel tournament creation
+    description: Close modal without saving
+    actions:
+      - type: CLICK
+        target: E035
+        description: Click Cancel button
+      - type: WAIT
+        ms: 300
+      - type: ASSERT
+        predicate:
+          kind: TEXT_NOT_EXISTS
+          value: Tournament Name
+        description: Modal is closed
+
+  - name: View tournament details
+    description: Check details of existing tournament
+    actions:
+      - type: SCROLL
+        direction: down
+        amount: 200
+        description: Scroll to see more tournaments
+      - type: WAIT
+        ms: 300
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Prize Pool
+        description: Prize pool label visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Players
+        description: Players count visible
+
+  - name: Test tournament actions
+    description: Verify action buttons work
+    actions:
+      - type: HOVER
+        target: E020
+        description: Hover over tournament card
+      - type: WAIT
+        ms: 300
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: View
+        description: View button visible on card
+
+teardown:
+  - name: Logout
+    actions:
+      - type: CLICK
+        target: E025
+      - type: WAIT
+        ms: 500
+

@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Rajdhani', sans-serif;
+  background-color: #0a0e17;
+  color: #e5e7eb;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Neon glow effects */
+.neon-text {
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.5), 0 0 20px rgba(34, 211, 238, 0.3);
+}
+
+.neon-border {
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.3), inset 0 0 10px rgba(34, 211, 238, 0.1);
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(34, 211, 238, 0.2);
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-2 px-4 rounded-lg;
+  @apply hover:from-cyan-400 hover:to-blue-500 transition-all duration-200;
+  @apply shadow-lg hover:shadow-neon;
+}
+
+.btn-secondary {
+  @apply bg-poker-card border border-poker-border text-gray-300 font-semibold py-2 px-4 rounded-lg;
+  @apply hover:bg-poker-border hover:text-white transition-all duration-200;
+}
+
+.btn-danger {
+  @apply bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold py-2 px-4 rounded-lg;
+  @apply hover:from-red-500 hover:to-red-600 transition-all duration-200;
+}
+
+/* Input styles */
+.input-field {
+  @apply w-full bg-poker-darker border border-poker-border rounded-lg px-4 py-2;
+  @apply text-gray-200 placeholder-gray-500;
+  @apply focus:outline-none focus:border-poker-accent focus:ring-1 focus:ring-poker-accent;
+  @apply transition-all duration-200;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full border-collapse;
+}
+
+.data-table th {
+  @apply text-left py-3 px-4 bg-poker-darker text-gray-400 font-semibold text-sm uppercase tracking-wider;
+  @apply border-b border-poker-border;
+}
+
+.data-table td {
+  @apply py-3 px-4 border-b border-poker-border;
+}
+
+.data-table tbody tr {
+  @apply hover:bg-poker-card/50 transition-colors;
+}
+
+/* Status badges */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+  @apply bg-green-900/50 text-green-400 border border-green-800;
+}
+
+.badge-warning {
+  @apply bg-yellow-900/50 text-yellow-400 border border-yellow-800;
+}
+
+.badge-danger {
+  @apply bg-red-900/50 text-red-400 border border-red-800;
+}
+
+.badge-info {
+  @apply bg-cyan-900/50 text-cyan-400 border border-cyan-800;
+}
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(34, 211, 238, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+

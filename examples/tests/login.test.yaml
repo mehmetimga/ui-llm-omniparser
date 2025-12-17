@@ -1,0 +1,121 @@
+# Login Flow Test Suite
+# Tests the authentication flow of the Poker Admin panel
+
+metadata:
+  name: Login Flow
+  description: Tests user authentication including login and logout
+  version: "1.0.0"
+  author: QA Team
+  tags:
+    - auth
+    - critical
+    - smoke
+  app: poker-admin
+  environment:
+    baseUrl: http://localhost:3000
+    viewport:
+      width: 1920
+      height: 1080
+    browser: chromium
+
+steps:
+  - name: Navigate to login page
+    description: Open the application and verify login page loads
+    actions:
+      - type: NAVIGATE
+        url: http://localhost:3000
+        description: Navigate to application root
+      - type: WAIT
+        ms: 1000
+        description: Wait for page to load
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: POKER ADMIN
+        description: Verify login page header is visible
+
+  - name: Verify login form elements
+    description: Check that all login form elements are present
+    actions:
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Email Address
+        description: Email label is visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Password
+        description: Password label is visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Sign In
+        description: Sign in button is visible
+
+  - name: Enter email address
+    description: Type email into the email field
+    actions:
+      - type: CLICK
+        target: E004
+        description: Click on email input field
+      - type: TYPE
+        target: E004
+        text: admin@poker.com
+        description: Enter email address
+
+  - name: Enter password
+    description: Type password into the password field
+    actions:
+      - type: CLICK
+        target: E006
+        description: Click on password input field
+      - type: TYPE
+        target: E006
+        text: secretpassword123
+        description: Enter password
+
+  - name: Submit login form
+    description: Click the sign in button to submit
+    actions:
+      - type: CLICK
+        target: E010
+        description: Click Sign In button
+      - type: WAIT
+        ms: 1500
+        description: Wait for login to process
+
+  - name: Verify successful login
+    description: Check that dashboard is displayed after login
+    actions:
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Dashboard
+        description: Dashboard navigation item visible
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Welcome back
+        description: Welcome message visible
+      - type: ASSERT
+        predicate:
+          kind: URL_CONTAINS
+          value: dashboard
+        description: URL contains dashboard
+
+  - name: Logout
+    description: Click logout button and verify return to login
+    actions:
+      - type: CLICK
+        target: E025
+        description: Click Logout button
+      - type: WAIT
+        ms: 500
+        description: Wait for logout
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Sign In
+        description: Back on login page
+

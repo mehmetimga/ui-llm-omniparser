@@ -1,0 +1,33 @@
+{
+  "name": "@ui-automation/runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Test runner CLI for UI automation framework",
+  "type": "module",
+  "bin": {
+    "ui-runner": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/cli/index.js"
+  },
+  "dependencies": {
+    "@ui-automation/shared": "workspace:*",
+    "commander": "^11.1.0",
+    "playwright": "^1.40.0",
+    "yaml": "^2.3.4",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}
+
