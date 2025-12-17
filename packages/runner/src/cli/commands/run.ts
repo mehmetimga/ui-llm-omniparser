@@ -214,13 +214,25 @@ async function executeStep(
     }
 
     // Execute each action in the step
+    let currentUIMap = beforeUIMap;
+    
     for (const action of step.actions) {
+      // For ASSERT actions, capture a fresh screenshot/UIMap to verify current state
+      if (action.type === 'ASSERT') {
+        const freshScreenshot = await executor.takeScreenshot();
+        try {
+          currentUIMap = await perception.parse(freshScreenshot);
+        } catch {
+          // Keep using previous UIMap if perception fails
+        }
+      }
+      
       // Try to heal target if needed (skip for text-based selectors)
       if (action.target && !action.target.includes(':')) {
         // Only use healing for ID-based targets (E001, E002, etc.)
         const resolution = healingEngine.resolveElement(
           action.target,
-          beforeUIMap,
+          currentUIMap,
           signatures.get(action.target)
         );
 
@@ -242,7 +254,7 @@ async function executeStep(
       }
       // For text-based selectors (text:xxx, button:xxx), let executor handle it directly
 
-      const result = await executor.executeAction(action, beforeUIMap);
+      const result = await executor.executeAction(action, currentUIMap);
 
       if (result.status === 'failure') {
         throw new Error(result.error || 'Action failed');

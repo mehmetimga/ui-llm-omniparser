@@ -53,8 +53,8 @@ steps:
           value: Sign In
         description: Sign in button is visible
 
-  - name: Enter credentials and submit
-    description: Type email and password using keyboard navigation
+  - name: Enter credentials and click Sign In
+    description: Type email, password, and click Sign In button
     actions:
       - type: PRESS_KEY
         key: Tab
@@ -73,9 +73,12 @@ steps:
         target: text:possword
         text: secretpassword123
         description: Enter password
-      - type: PRESS_KEY
-        key: Enter
-        description: Submit form
+      - type: WAIT
+        ms: 500
+        description: Wait for input to settle
+      - type: CLICK
+        target: locator:Sign In
+        description: Click Sign In button using Playwright locator
       - type: WAIT
         ms: 2000
         description: Wait for login to process
@@ -91,5 +94,20 @@ steps:
           kind: URL_CONTAINS
           value: dashboard
         description: URL contains dashboard
+
+  - name: Logout
+    description: Click logout button and verify return to login
+    actions:
+      - type: CLICK
+        target: text:Logout
+        description: Click Logout button using OmniParser coordinate detection
+      - type: WAIT
+        ms: 2000
+        description: Wait for logout to complete
+      - type: ASSERT
+        predicate:
+          kind: TEXT_EXISTS
+          value: Sign In
+        description: Login page is displayed (Sign In button visible)
 
 

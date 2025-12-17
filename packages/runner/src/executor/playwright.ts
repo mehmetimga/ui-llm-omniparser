@@ -297,8 +297,66 @@ export class PlaywrightExecutor {
     if (!action.target) {
       throw new Error('CLICK action requires target');
     }
+    
+    // Support selector-based clicking: "selector:button[type='submit']" or "css:button"
+    if (action.target.startsWith('selector:') || action.target.startsWith('css:')) {
+      const selector = action.target.replace(/^(selector:|css:)/, '');
+      await this.getPage().locator(selector).click();
+      return;
+    }
+    
+    // Support xpath-based clicking: "xpath://button"
+    if (action.target.startsWith('xpath:')) {
+      const xpath = action.target.replace(/^xpath:/, '');
+      await this.getPage().locator(`xpath=${xpath}`).click();
+      return;
+    }
+    
+    // Support text-based locator clicking using Playwright's getByRole: "locator:Sign In"
+    if (action.target.startsWith('locator:')) {
+      const text = action.target.replace(/^locator:/, '');
+      await this.getPage().getByRole('button', { name: text }).click();
+      return;
+    }
+    
+    // Support text-based clicking using Playwright's getByText: "bytext:Logout"
+    if (action.target.startsWith('bytext:')) {
+      const text = action.target.replace(/^bytext:/, '');
+      const page = this.getPage();
+      // Find button containing the text and click it
+      await page.locator('button').filter({ hasText: text }).click();
+      return;
+    }
+    
+    // Fallback to coordinate-based clicking
     const { x, y } = this.getElementPosition(action.target, uiMap);
-    await this.getPage().mouse.click(x, y);
+    console.log(`[DEBUG] Clicking at coordinates: (${x}, ${y}) for target: ${action.target}`);
+    
+    // Try JavaScript-based click at coordinates, finding the nearest clickable parent (button/a/input)
+    const clickResult = await this.getPage().evaluate(`
+      (function() {
+        let element = document.elementFromPoint(${x}, ${y});
+        if (!element) {
+          return { success: false, reason: 'no element at coordinates' };
+        }
+        
+        // Find the nearest button, anchor, or input parent
+        const clickableParent = element.closest('button, a, [role="button"], input[type="button"], input[type="submit"]');
+        const targetElement = clickableParent || element;
+        
+        console.log('[JS] Found element at (${x}, ${y}):', element.tagName);
+        console.log('[JS] Clicking:', targetElement.tagName, targetElement.textContent?.slice(0, 50));
+        
+        targetElement.click();
+        return { 
+          success: true, 
+          element: element.tagName, 
+          clickedElement: targetElement.tagName,
+          text: targetElement.textContent?.slice(0, 50)
+        };
+      })()
+    `);
+    console.log(`[DEBUG] Click result:`, clickResult);
   }
 
   private async executeDoubleClick(action: TestAction, uiMap: UIMap): Promise<void> {
@@ -465,6 +523,16 @@ export class PlaywrightExecutor {
         const url = page.url();
         if (!url.includes(String(predicate.value))) {
           throw new Error(`URL does not contain: ${predicate.value}. Current URL: ${url}`);
+        }
+        break;
+
+      case 'URL_NOT_CONTAINS':
+        if (!predicate.value) {
+          throw new Error('URL_NOT_CONTAINS requires value');
+        }
+        const currentUrl = page.url();
+        if (currentUrl.includes(String(predicate.value))) {
+          throw new Error(`URL should not contain: ${predicate.value}. Current URL: ${currentUrl}`);
         }
         break;
 

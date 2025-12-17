@@ -33,6 +33,7 @@ export const AssertPredicateKindSchema = z.enum([
   'ELEMENT_HIDDEN',
   'TEXT_EQUALS',
   'URL_CONTAINS',
+  'URL_NOT_CONTAINS',
   'TITLE_CONTAINS',
   'ELEMENT_COUNT',
 ]);
