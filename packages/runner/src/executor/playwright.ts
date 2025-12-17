@@ -382,6 +382,36 @@ export class PlaywrightExecutor {
     if (!action.text) {
       throw new Error('TYPE action requires text');
     }
+
+    // Support selector-based typing: "selector:input[type='email']"
+    if (action.target.startsWith('selector:') || action.target.startsWith('css:')) {
+      const selector = action.target.replace(/^(selector:|css:)/, '');
+      await this.getPage().locator(selector).first().fill(action.text);
+      return;
+    }
+
+    // Support xpath-based typing: "xpath://input"
+    if (action.target.startsWith('xpath:')) {
+      const xpath = action.target.replace(/^xpath:/, '');
+      await this.getPage().locator(`xpath=${xpath}`).first().fill(action.text);
+      return;
+    }
+
+    // Support Playwright's getByLabel: "label:Email"
+    if (action.target.startsWith('label:')) {
+      const label = action.target.replace(/^label:/, '');
+      await this.getPage().getByLabel(label, { exact: false }).fill(action.text);
+      return;
+    }
+
+    // Support Playwright's getByPlaceholder: "placeholder:Enter email"
+    if (action.target.startsWith('placeholder:')) {
+      const placeholder = action.target.replace(/^placeholder:/, '');
+      await this.getPage().getByPlaceholder(placeholder, { exact: false }).fill(action.text);
+      return;
+    }
+
+    // Fallback to coordinate-based typing
     const { x, y } = this.getElementPosition(action.target, uiMap);
     await this.getPage().mouse.click(x, y);
     await this.getPage().keyboard.type(action.text);

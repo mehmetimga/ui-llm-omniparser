@@ -88,16 +88,23 @@ class LLaVAVision:
         Returns:
             List of detected text with approximate positions
         """
-        prompt = """Analyze this UI screenshot and list ALL visible text.
-For each text element, provide:
-- The exact text content
-- Its approximate position (top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right)
-- The element type (button, label, input placeholder, heading, link, menu item)
+        prompt = """You are a UI analyzer. Examine this screenshot and list EVERY visible text element, including:
+- Headings and titles
+- Button text
+- Input field labels (like "Email", "Password", "Username")
+- Links and navigation items
+- Placeholder text
+- Small text and captions
 
-Format as JSON array:
-[{"text": "Sign In", "position": "center", "type": "button"}, ...]
+For each text element provide:
+- text: exact text content
+- position: location (top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right)
+- type: element type (heading, button, label, input, link, text)
 
-Only return the JSON array, no other text."""
+IMPORTANT: Include ALL text you can see, even small labels near input fields.
+
+Return as JSON array only:
+[{"text": "Email Address", "position": "center-left", "type": "label"}, {"text": "Sign In", "position": "center", "type": "button"}]"""
 
         try:
             response = self.client.post(
@@ -116,9 +123,13 @@ Only return the JSON array, no other text."""
             
             if response.status_code == 200:
                 result = response.json().get("response", "")
-                return self._parse_text_response(result)
+                logger.info(f"LLaVA raw response: {result[:500]}...")
+                parsed = self._parse_text_response(result)
+                logger.info(f"LLaVA parsed {len(parsed)} elements")
+                return parsed
             else:
                 logger.error(f"LLaVA request failed: {response.status_code}")
+                logger.error(f"Response: {response.text[:200]}")
                 return []
                 
         except Exception as e:

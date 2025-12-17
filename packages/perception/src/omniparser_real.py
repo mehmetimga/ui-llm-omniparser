@@ -355,6 +355,8 @@ class RealOmniParser:
             # Get all text elements from LLaVA
             text_elements = self.llava_vision.extract_text(image)
             logger.info(f"LLaVA detected {len(text_elements)} text elements")
+            for elem in text_elements:
+                logger.info(f"  -> '{elem.get('text', '')}' ({elem.get('type', 'unknown')}) at {elem.get('position', 'unknown')}")
             
             # Convert position names to approximate coordinates
             position_map = {

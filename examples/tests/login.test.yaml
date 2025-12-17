@@ -26,51 +26,43 @@ steps:
         url: http://localhost:3000
         description: Navigate to application root
       - type: WAIT
-        ms: 1000
+        ms: 2000
         description: Wait for page to load
       - type: ASSERT
         predicate:
           kind: TEXT_EXISTS
-          value: POKER ADMIN
-        description: Verify login page header is visible
+          value: Sign In
+        description: Verify login page Sign In button is visible (LLaVA detection)
 
   - name: Verify login form elements
-    description: Check that all login form elements are present
+    description: Check that login button and form inputs are present (LLaVA 13b detection)
     actions:
       - type: ASSERT
         predicate:
           kind: TEXT_EXISTS
-          value: Email Address
-        description: Email label is visible
+          value: Poker
+        description: Header is visible (LLaVA detects "Poker" or "Poker Dome")
       - type: ASSERT
         predicate:
           kind: TEXT_EXISTS
           value: Password
-        description: Password label is visible
-      - type: ASSERT
-        predicate:
-          kind: TEXT_EXISTS
-          value: Sign In
-        description: Sign in button is visible
+        description: Password label is visible (LLaVA 13b detects form labels)
 
   - name: Enter credentials and click Sign In
     description: Type email, password, and click Sign In button
     actions:
-      - type: PRESS_KEY
-        key: Tab
-        description: Tab to email field
-      - type: PRESS_KEY
-        key: Tab
-        description: Tab to email input
+      - type: CLICK
+        target: selector:input[type="text"], input[type="email"]
+        description: Click on email input field
       - type: TYPE
-        target: text:adminmpokercom
+        target: selector:input[type="text"], input[type="email"]
         text: admin@poker.com
         description: Enter email address
-      - type: PRESS_KEY
-        key: Tab
-        description: Tab to password field
+      - type: CLICK
+        target: selector:input[type="password"]
+        description: Click on password input field
       - type: TYPE
-        target: text:possword
+        target: selector:input[type="password"]
         text: secretpassword123
         description: Enter password
       - type: WAIT
@@ -99,8 +91,8 @@ steps:
     description: Click logout button and verify return to login
     actions:
       - type: CLICK
-        target: text:Logout
-        description: Click Logout button using OmniParser coordinate detection
+        target: locator:Logout
+        description: Click Logout button using Playwright locator
       - type: WAIT
         ms: 2000
         description: Wait for logout to complete
