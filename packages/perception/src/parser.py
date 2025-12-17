@@ -160,20 +160,33 @@ class OmniParser(BaseParser):
     """
     OmniParser wrapper for real UI element detection.
     
-    Uses YOLO for detection + EasyOCR for text extraction.
+    Uses YOLO for detection + EasyOCR or LLaVA for text extraction.
     Falls back to MockParser if dependencies are not available.
     """
     
-    def __init__(self, model_path: Optional[str] = None, device: str = "auto"):
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        device: str = "auto",
+        use_llava: bool = False,
+        llava_model: str = "llava",
+        ollama_url: str = "http://localhost:11434",
+    ):
         """
         Initialize OmniParser.
         
         Args:
             model_path: Path to the OmniParser model weights
             device: 'cuda', 'cpu', or 'auto'
+            use_llava: Use LLaVA for OCR instead of EasyOCR
+            llava_model: LLaVA model name ('llava' or 'llava-phi3')
+            ollama_url: Ollama API URL
         """
         self.model_path = model_path
         self.device = device
+        self.use_llava = use_llava
+        self.llava_model = llava_model
+        self.ollama_url = ollama_url
         self._real_parser = None
         self._fallback = MockParser()
         
@@ -194,10 +207,14 @@ class OmniParser(BaseParser):
                 device=self.device,
                 enable_ocr=True,
                 enable_captioning=False,  # Disabled by default for speed
+                use_llava=self.use_llava,
+                llava_model=self.llava_model,
+                ollama_url=self.ollama_url,
             )
             
             if self._real_parser:
-                logger.info("Real OmniParser loaded successfully")
+                ocr_backend = f"LLaVA ({self.llava_model})" if self.use_llava else "EasyOCR"
+                logger.info(f"Real OmniParser loaded successfully with {ocr_backend}")
             else:
                 logger.info("Failed to load OmniParser, using mock parser")
                 
@@ -231,7 +248,10 @@ class OmniParser(BaseParser):
 def get_parser(
     use_mock: bool = False,
     model_path: Optional[str] = None,
-    device: str = "auto"
+    device: str = "auto",
+    use_llava: bool = False,
+    llava_model: str = "llava",
+    ollama_url: str = "http://localhost:11434",
 ) -> BaseParser:
     """
     Get a parser instance.
@@ -240,6 +260,9 @@ def get_parser(
         use_mock: Force use of mock parser
         model_path: Path to OmniParser model
         device: Device for inference ('cuda', 'cpu', 'auto')
+        use_llava: Use LLaVA for OCR instead of EasyOCR
+        llava_model: LLaVA model name ('llava' or 'llava-phi3')
+        ollama_url: Ollama API URL
         
     Returns:
         Parser instance
@@ -249,10 +272,17 @@ def get_parser(
         return MockParser()
     
     # Try to use real OmniParser
-    parser = OmniParser(model_path=model_path, device=device)
+    parser = OmniParser(
+        model_path=model_path,
+        device=device,
+        use_llava=use_llava,
+        llava_model=llava_model,
+        ollama_url=ollama_url,
+    )
     
     if parser.is_real:
-        logger.info("Using real OmniParser")
+        ocr_backend = f"LLaVA ({llava_model})" if use_llava else "EasyOCR"
+        logger.info(f"Using real OmniParser with {ocr_backend}")
     else:
         logger.info("Using mock parser (OmniParser not available)")
     

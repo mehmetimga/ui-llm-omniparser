@@ -42,7 +42,19 @@ app.add_middleware(
 # Initialize parser
 USE_MOCK = os.getenv("USE_MOCK_PARSER", "true").lower() == "true"
 MODEL_PATH = os.getenv("OMNIPARSER_MODEL_PATH", None)
-parser = get_parser(use_mock=USE_MOCK, model_path=MODEL_PATH)
+
+# LLaVA configuration
+USE_LLAVA = os.getenv("USE_LLAVA", "false").lower() == "true"
+LLAVA_MODEL = os.getenv("LLAVA_MODEL", "llava")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+parser = get_parser(
+    use_mock=USE_MOCK,
+    model_path=MODEL_PATH,
+    use_llava=USE_LLAVA,
+    llava_model=LLAVA_MODEL,
+    ollama_url=OLLAMA_URL
+)
 
 
 class ParseRequestMetadata(BaseModel):
@@ -63,15 +75,21 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     parser: str
+    ocr_backend: str
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
+    ocr_backend = "easyocr"
+    if USE_LLAVA:
+        ocr_backend = f"llava ({LLAVA_MODEL})"
+    
     return HealthResponse(
         status="ok",
         version="0.1.0",
         parser="mock" if USE_MOCK else "omniparser",
+        ocr_backend=ocr_backend if not USE_MOCK else "mock",
     )
 
 

@@ -3,6 +3,8 @@ Real OmniParser Integration
 
 This module provides actual OmniParser integration for UI element detection.
 Requires: torch, torchvision, ultralytics, easyocr, transformers
+
+Optionally uses LLaVA (via Ollama) for improved text extraction.
 """
 
 import logging
@@ -12,6 +14,8 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
+
+from .llava_vision import create_llava_vision, LLaVAVision
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ class RealOmniParser:
     """
     Real OmniParser implementation using:
     - YOLO for UI element detection
-    - EasyOCR for text extraction
+    - EasyOCR or LLaVA for text extraction
     - Florence-2 for captioning (optional)
     """
     
@@ -42,6 +46,9 @@ class RealOmniParser:
         confidence_threshold: float = 0.5,
         enable_ocr: bool = True,
         enable_captioning: bool = False,  # Disabled by default (slower)
+        use_llava: bool = False,  # Use LLaVA for OCR instead of EasyOCR
+        llava_model: str = "llava",  # LLaVA model name
+        ollama_url: str = "http://localhost:11434",
     ):
         """
         Initialize OmniParser.
@@ -52,6 +59,9 @@ class RealOmniParser:
             confidence_threshold: Minimum detection confidence
             enable_ocr: Enable text extraction
             enable_captioning: Enable element captioning (slower)
+            use_llava: Use LLaVA (via Ollama) for OCR instead of EasyOCR
+            llava_model: LLaVA model name ('llava' or 'llava-phi3')
+            ollama_url: Ollama API URL
         """
         if not OMNIPARSER_AVAILABLE:
             raise RuntimeError(
@@ -63,6 +73,9 @@ class RealOmniParser:
         self.confidence_threshold = confidence_threshold
         self.enable_ocr = enable_ocr
         self.enable_captioning = enable_captioning
+        self.use_llava = use_llava
+        self.llava_model = llava_model
+        self.ollama_url = ollama_url
         
         # Determine device
         if device == "auto":
@@ -76,6 +89,7 @@ class RealOmniParser:
         self.detector = None
         self.ocr_reader = None
         self.captioner = None
+        self.llava_vision: Optional[LLaVAVision] = None
         
         self._load_models()
     
@@ -93,18 +107,34 @@ class RealOmniParser:
             self.detector = YOLO("yolov8n.pt")
             self.detector.to(self.device)
         
-        # Load OCR
+        # Load OCR - prefer LLaVA if enabled
         if self.enable_ocr:
-            logger.info("Loading EasyOCR...")
-            self.ocr_reader = easyocr.Reader(
-                ['en'],
-                gpu=self.device == "cuda",
-                verbose=False
-            )
+            if self.use_llava:
+                logger.info(f"Loading LLaVA Vision ({self.llava_model})...")
+                self.llava_vision = create_llava_vision(
+                    model=self.llava_model,
+                    ollama_url=self.ollama_url
+                )
+                if self.llava_vision:
+                    logger.info("LLaVA Vision loaded successfully")
+                else:
+                    logger.warning("LLaVA not available, falling back to EasyOCR")
+                    self._load_easyocr()
+            else:
+                self._load_easyocr()
         
         # Load captioner (optional - requires more VRAM)
         if self.enable_captioning:
             self._load_captioner()
+    
+    def _load_easyocr(self):
+        """Load EasyOCR reader"""
+        logger.info("Loading EasyOCR...")
+        self.ocr_reader = easyocr.Reader(
+            ['en'],
+            gpu=self.device == "cuda",
+            verbose=False
+        )
     
     def _load_captioner(self):
         """Load Florence-2 or BLIP-2 for captioning"""
@@ -192,9 +222,17 @@ class RealOmniParser:
         image: Image.Image,
         bbox: tuple[float, float, float, float]
     ) -> str:
-        """Extract text from a region using OCR"""
+        """Extract text from a region using OCR (LLaVA or EasyOCR)"""
         try:
             x1, y1, x2, y2 = [int(v) for v in bbox]
+            
+            # Use LLaVA if available
+            if self.llava_vision:
+                return self.llava_vision.extract_text_from_region(image, (x1, y1, x2, y2))
+            
+            # Fallback to EasyOCR
+            if not self.ocr_reader:
+                return ""
             
             # Add padding
             pad = 5
@@ -223,11 +261,16 @@ class RealOmniParser:
         bbox: tuple[float, float, float, float]
     ) -> str:
         """Generate caption for a UI element"""
+        x1, y1, x2, y2 = [int(v) for v in bbox]
+        
+        # Use LLaVA for captioning if available
+        if self.llava_vision:
+            return self.llava_vision.describe_element(image, (x1, y1, x2, y2))
+        
         if not self.captioner:
             return ""
         
         try:
-            x1, y1, x2, y2 = [int(v) for v in bbox]
             region = image.crop((x1, y1, x2, y2))
             
             # Prepare input
@@ -260,6 +303,10 @@ class RealOmniParser:
         """
         detections = []
         
+        # Use LLaVA for full-screen text extraction
+        if self.llava_vision:
+            return self._llava_based_detection(image)
+        
         if not self.ocr_reader:
             return detections
         
@@ -290,6 +337,72 @@ class RealOmniParser:
                 detections.append(detection)
         except Exception as e:
             logger.error(f"OCR-based detection failed: {e}")
+        
+        return detections
+    
+    def _llava_based_detection(self, image: Image.Image) -> list[dict]:
+        """
+        Use LLaVA for UI element detection.
+        More accurate than EasyOCR for text extraction.
+        """
+        detections = []
+        width, height = image.size
+        
+        if not self.llava_vision:
+            return detections
+        
+        try:
+            # Get all text elements from LLaVA
+            text_elements = self.llava_vision.extract_text(image)
+            logger.info(f"LLaVA detected {len(text_elements)} text elements")
+            
+            # Convert position names to approximate coordinates
+            position_map = {
+                "top-left": (width * 0.15, height * 0.15),
+                "top-center": (width * 0.5, height * 0.15),
+                "top-right": (width * 0.85, height * 0.15),
+                "center-left": (width * 0.15, height * 0.5),
+                "center": (width * 0.5, height * 0.5),
+                "center-right": (width * 0.85, height * 0.5),
+                "bottom-left": (width * 0.15, height * 0.85),
+                "bottom-center": (width * 0.5, height * 0.85),
+                "bottom-right": (width * 0.85, height * 0.85),
+            }
+            
+            for i, elem in enumerate(text_elements):
+                text = elem.get("text", "")
+                position = elem.get("position", "center").lower()
+                elem_type = elem.get("type", "text").lower()
+                
+                if not text:
+                    continue
+                
+                # Get approximate center position
+                center_x, center_y = position_map.get(position, (width * 0.5, height * 0.5))
+                
+                # Estimate bounding box size based on text length
+                text_width = min(len(text) * 12, width * 0.3)  # ~12px per char
+                text_height = 30  # Approximate line height
+                
+                x1 = max(0, int(center_x - text_width / 2))
+                y1 = max(0, int(center_y - text_height / 2))
+                x2 = min(width, int(center_x + text_width / 2))
+                y2 = min(height, int(center_y + text_height / 2))
+                
+                # Map element type
+                label = elem_type if elem_type in ["button", "input", "link", "heading", "label", "menu item"] else "text"
+                
+                detection = {
+                    "bbox": [x1, y1, x2, y2],
+                    "label": label,
+                    "confidence": 0.85,  # LLaVA doesn't provide confidence
+                    "text": text,
+                    "caption": f"{elem_type}: {text}",
+                }
+                detections.append(detection)
+                
+        except Exception as e:
+            logger.error(f"LLaVA-based detection failed: {e}")
         
         return detections
     
@@ -352,11 +465,21 @@ class RealOmniParser:
 def create_real_parser(
     model_path: Optional[str] = None,
     device: str = "auto",
+    use_llava: bool = False,
+    llava_model: str = "llava",
+    ollama_url: str = "http://localhost:11434",
     **kwargs
 ) -> Optional[RealOmniParser]:
     """
     Factory function to create a RealOmniParser.
     
+    Args:
+        model_path: Path to models directory
+        device: 'cuda', 'cpu', or 'auto'
+        use_llava: Use LLaVA for OCR instead of EasyOCR
+        llava_model: LLaVA model name ('llava' or 'llava-phi3')
+        ollama_url: Ollama API URL
+        
     Returns None if dependencies are not available.
     """
     if not OMNIPARSER_AVAILABLE:
@@ -367,6 +490,9 @@ def create_real_parser(
         return RealOmniParser(
             model_path=model_path,
             device=device,
+            use_llava=use_llava,
+            llava_model=llava_model,
+            ollama_url=ollama_url,
             **kwargs
         )
     except Exception as e:
