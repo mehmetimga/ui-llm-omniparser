@@ -67,6 +67,26 @@ export const ElementSignatureSchema = z.object({
 export type ElementSignature = z.infer<typeof ElementSignatureSchema>;
 
 /**
+ * DOM selector information for hybrid matching
+ */
+export const DOMSelectorSchema = z.object({
+  /** CSS selector */
+  css: z.string().optional(),
+  /** XPath selector */
+  xpath: z.string().optional(),
+  /** Playwright test ID */
+  testId: z.string().optional(),
+  /** Accessible name from accessibility tree */
+  accessibleName: z.string().optional(),
+  /** Accessible role from accessibility tree */
+  accessibleRole: z.string().optional(),
+  /** Tag name */
+  tagName: z.string().optional(),
+});
+
+export type DOMSelector = z.infer<typeof DOMSelectorSchema>;
+
+/**
  * A single UI element detected in a screenshot
  */
 export const UIElementSchema = z.object({
@@ -99,6 +119,12 @@ export const UIElementSchema = z.object({
 
   /** Element signature for healing */
   signature: ElementSignatureSchema.optional(),
+
+  /** DOM selectors for hybrid matching (added by runner) */
+  domSelector: DOMSelectorSchema.optional(),
+
+  /** Source of detection: 'vision', 'dom', or 'hybrid' */
+  source: z.enum(['vision', 'dom', 'hybrid']).default('vision'),
 });
 
 export type UIElement = z.infer<typeof UIElementSchema>;

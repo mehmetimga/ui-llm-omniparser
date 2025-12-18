@@ -77,6 +77,9 @@ cd packages/runner
 
 # Run login test with visible browser
 pnpm start run --test ../../examples/tests/login.test.yaml --no-headless --verbose
+
+# Run with DOM/Accessibility enhancement (more robust targeting)
+pnpm start run --test ../../examples/tests/login.test.yaml --no-headless --verbose --enhance-dom
 ```
 
 ## Architecture

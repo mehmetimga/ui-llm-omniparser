@@ -1,8 +1,13 @@
 /**
  * Playwright Executor - Executes actions on web pages using Playwright
+ * 
+ * Features:
+ * - Vision-based element targeting via UIMap
+ * - DOM/Accessibility tree integration for hybrid matching
+ * - Multiple selector types (text, css, xpath, locator, label)
  */
 
-import { chromium, firefox, webkit, Browser, BrowserContext, Page } from 'playwright';
+import { chromium, firefox, webkit, Browser, BrowserContext, Page, Locator } from 'playwright';
 import type {
   TestAction,
   UIMap,
@@ -10,8 +15,24 @@ import type {
   ActionResult,
   ActionResultStatus,
   BBox,
+  DOMSelector,
 } from '@ui-automation/shared';
 import { getElementCenter, findElementById } from '@ui-automation/shared';
+import chalk from 'chalk';
+
+/**
+ * DOM element info extracted from page
+ */
+interface DOMElementInfo {
+  tagName: string;
+  text: string;
+  accessibleName: string;
+  accessibleRole: string;
+  boundingBox: { x: number; y: number; width: number; height: number } | null;
+  attributes: Record<string, string>;
+  selector: string;
+  testId?: string;
+}
 
 export interface ExecutorConfig {
   browser: 'chromium' | 'firefox' | 'webkit';
@@ -104,6 +125,306 @@ export class PlaywrightExecutor {
     const page = this.getPage();
     const buffer = await page.screenshot({ type: 'png' });
     return buffer.toString('base64');
+  }
+
+  /**
+   * Extract interactive DOM elements from the page
+   */
+  async extractDOMElements(): Promise<DOMElementInfo[]> {
+    const page = this.getPage();
+    
+    // Use page.evaluate with explicit function to avoid TypeScript issues
+    const elements: DOMElementInfo[] = await page.evaluate(`
+      (function() {
+        const interactiveSelectors = [
+          'button',
+          'a',
+          'input',
+          'select',
+          'textarea',
+          '[role="button"]',
+          '[role="link"]',
+          '[role="menuitem"]',
+          '[role="tab"]',
+          '[role="checkbox"]',
+          '[role="radio"]',
+          '[onclick]',
+          '[data-testid]',
+        ];
+        
+        const results = [];
+        const seen = new Set();
+        
+        for (const selector of interactiveSelectors) {
+          document.querySelectorAll(selector).forEach((el) => {
+            if (seen.has(el)) return;
+            seen.add(el);
+            
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            
+            // Get computed style to check visibility
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') return;
+            
+            // Get text content
+            const text = el.innerText?.trim() || 
+                         el.getAttribute('value') || 
+                         el.getAttribute('placeholder') || '';
+            
+            // Get accessible name
+            const accessibleName = el.getAttribute('aria-label') ||
+                                   el.getAttribute('title') ||
+                                   el.innerText?.trim() ||
+                                   '';
+            
+            // Get accessible role
+            const accessibleRole = el.getAttribute('role') || el.tagName.toLowerCase();
+            
+            // Generate a robust selector
+            let cssSelector = '';
+            if (el.id) {
+              cssSelector = '#' + el.id;
+            } else if (el.getAttribute('data-testid')) {
+              cssSelector = '[data-testid="' + el.getAttribute('data-testid') + '"]';
+            } else if (el.className && typeof el.className === 'string') {
+              const classes = el.className.split(' ').filter(c => c && !c.includes(':'));
+              if (classes.length > 0) {
+                cssSelector = el.tagName.toLowerCase() + '.' + classes.slice(0, 2).join('.');
+              }
+            }
+            if (!cssSelector) {
+              cssSelector = el.tagName.toLowerCase();
+            }
+            
+            // Collect attributes
+            const attributes = {};
+            ['type', 'name', 'placeholder', 'href', 'value', 'aria-label'].forEach(attr => {
+              const val = el.getAttribute(attr);
+              if (val) attributes[attr] = val;
+            });
+            
+            results.push({
+              tagName: el.tagName.toLowerCase(),
+              text: text.slice(0, 100),
+              accessibleName: accessibleName.slice(0, 100),
+              accessibleRole,
+              boundingBox: {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+                width: rect.width,
+                height: rect.height,
+              },
+              attributes,
+              selector: cssSelector,
+              testId: el.getAttribute('data-testid') || undefined,
+            });
+          });
+        }
+        
+        return results;
+      })()
+    `);
+    
+    return elements;
+  }
+
+  /**
+   * Enhance UIMap with DOM selectors for more robust element targeting
+   */
+  async enhanceUIMapWithDOM(uiMap: UIMap): Promise<UIMap> {
+    const domElements = await this.extractDOMElements();
+    
+    // Match vision elements with DOM elements by bounding box proximity
+    const enhancedElements = uiMap.elements.map((visionEl) => {
+      const [vx, vy, vw, vh] = visionEl.bbox;
+      const vCenterX = vx + vw / 2;
+      const vCenterY = vy + vh / 2;
+      
+      // Find closest DOM element
+      let bestMatch: DOMElementInfo | null = null;
+      let bestDistance = Infinity;
+      
+      for (const domEl of domElements) {
+        if (!domEl.boundingBox) continue;
+        
+        const dx = domEl.boundingBox.x - vCenterX;
+        const dy = domEl.boundingBox.y - vCenterY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Must be within 50px to be considered a match
+        if (distance < 50 && distance < bestDistance) {
+          // Additional validation: text similarity
+          const textMatch = 
+            domEl.text.toLowerCase().includes(visionEl.text.toLowerCase()) ||
+            visionEl.text.toLowerCase().includes(domEl.text.toLowerCase()) ||
+            domEl.accessibleName.toLowerCase().includes(visionEl.text.toLowerCase());
+          
+          if (textMatch || distance < 20) {
+            bestMatch = domEl;
+            bestDistance = distance;
+          }
+        }
+      }
+      
+      if (bestMatch) {
+        return {
+          ...visionEl,
+          domSelector: {
+            css: bestMatch.selector,
+            testId: bestMatch.testId,
+            accessibleName: bestMatch.accessibleName,
+            accessibleRole: bestMatch.accessibleRole,
+            tagName: bestMatch.tagName,
+          } as DOMSelector,
+          source: 'hybrid' as const,
+        };
+      }
+      
+      return visionEl;
+    });
+    
+    // Add DOM-only elements that weren't detected by vision
+    const visionBboxes = uiMap.elements.map(el => ({
+      cx: el.bbox[0] + el.bbox[2] / 2,
+      cy: el.bbox[1] + el.bbox[3] / 2,
+    }));
+    
+    let nextId = uiMap.elements.length + 1;
+    const domOnlyElements: UIElement[] = [];
+    
+    for (const domEl of domElements) {
+      if (!domEl.boundingBox) continue;
+      
+      // Check if this DOM element is already matched
+      const isMatched = visionBboxes.some(vb => {
+        const dx = domEl.boundingBox!.x - vb.cx;
+        const dy = domEl.boundingBox!.y - vb.cy;
+        return Math.sqrt(dx * dx + dy * dy) < 50;
+      });
+      
+      if (!isMatched && domEl.text) {
+        domOnlyElements.push({
+          id: `D${String(nextId++).padStart(3, '0')}`,
+          bbox: [
+            domEl.boundingBox.x - domEl.boundingBox.width / 2,
+            domEl.boundingBox.y - domEl.boundingBox.height / 2,
+            domEl.boundingBox.width,
+            domEl.boundingBox.height,
+          ] as BBox,
+          role: this.mapDOMRoleToUIRole(domEl.accessibleRole),
+          text: domEl.text,
+          caption: domEl.accessibleName,
+          confidence: 1.0,
+          interactable: true,
+          neighbors: { left: [], right: [], above: [], below: [] },
+          domSelector: {
+            css: domEl.selector,
+            testId: domEl.testId,
+            accessibleName: domEl.accessibleName,
+            accessibleRole: domEl.accessibleRole,
+            tagName: domEl.tagName,
+          },
+          source: 'dom' as const,
+        });
+      }
+    }
+    
+    return {
+      ...uiMap,
+      elements: [...enhancedElements, ...domOnlyElements],
+    };
+  }
+
+  /**
+   * Map DOM roles to UI element roles
+   */
+  private mapDOMRoleToUIRole(domRole: string): UIElement['role'] {
+    const roleMap: Record<string, UIElement['role']> = {
+      button: 'button',
+      link: 'link',
+      a: 'link',
+      textbox: 'input',
+      input: 'input',
+      checkbox: 'checkbox',
+      radio: 'radio',
+      select: 'select',
+      combobox: 'select',
+      menuitem: 'menu',
+      tab: 'tab',
+      img: 'image',
+      image: 'image',
+    };
+    return roleMap[domRole.toLowerCase()] || 'unknown';
+  }
+
+  /**
+   * Find UIElement in UIMap by target string
+   */
+  private findUIElementByTarget(target: string, uiMap: UIMap): UIElement | undefined {
+    // Direct ID lookup
+    if (target.match(/^[ED]\d+$/)) {
+      return findElementById(uiMap, target);
+    }
+    
+    // Text-based lookup
+    if (target.startsWith('text:')) {
+      const searchText = target.slice(5).toLowerCase().trim();
+      return uiMap.elements.find((el) => {
+        const textMatch = el.text.toLowerCase().includes(searchText);
+        const captionMatch = el.caption.toLowerCase().includes(searchText);
+        return textMatch || captionMatch;
+      });
+    }
+    
+    // Role:text lookup (e.g., "button:Sign In")
+    const roleMatch = target.match(/^(\w+):(.+)$/);
+    if (roleMatch) {
+      const [, role, text] = roleMatch;
+      const searchText = text.toLowerCase().trim();
+      return uiMap.elements.find((el) => {
+        const roleMatches = el.role === role.toLowerCase();
+        const textMatches = el.text.toLowerCase().includes(searchText) ||
+                          el.caption.toLowerCase().includes(searchText);
+        return roleMatches && textMatches;
+      });
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Find element using DOM selector (more reliable than coordinates)
+   */
+  async findElementByDOMSelector(domSelector: DOMSelector): Promise<Locator | null> {
+    const page = this.getPage();
+    
+    // Try test ID first (most reliable)
+    if (domSelector.testId) {
+      const locator = page.getByTestId(domSelector.testId);
+      if (await locator.count() > 0) return locator;
+    }
+    
+    // Try accessible name + role
+    if (domSelector.accessibleName && domSelector.accessibleRole) {
+      try {
+        const roleLocator = page.getByRole(domSelector.accessibleRole as any, { 
+          name: domSelector.accessibleName,
+          exact: false 
+        });
+        if (await roleLocator.count() > 0) return roleLocator;
+      } catch (e) {
+        // Role might not be valid, continue
+      }
+    }
+    
+    // Try CSS selector
+    if (domSelector.css) {
+      const cssLocator = page.locator(domSelector.css);
+      if (await cssLocator.count() > 0) return cssLocator.first();
+    }
+    
+    return null;
   }
 
   /**
@@ -326,6 +647,17 @@ export class PlaywrightExecutor {
       // Find button containing the text and click it
       await page.locator('button').filter({ hasText: text }).click();
       return;
+    }
+    
+    // Try DOM selector first if element has one (more reliable than coordinates)
+    const element = this.findUIElementByTarget(action.target, uiMap);
+    if (element?.domSelector) {
+      const locator = await this.findElementByDOMSelector(element.domSelector);
+      if (locator) {
+        console.log(chalk.green(`[DOM] Using DOM selector for ${action.target}`));
+        await locator.click({ timeout: 5000 });
+        return;
+      }
     }
     
     // Fallback to coordinate-based clicking

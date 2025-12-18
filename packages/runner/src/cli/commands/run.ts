@@ -24,6 +24,8 @@ export interface RunOptions {
   perceptionUrl?: string;
   outputDir?: string;
   verbose?: boolean;
+  /** Enable DOM/Accessibility tree enhancement for hybrid element matching */
+  enhanceDom?: boolean;
 }
 
 export async function runCommand(options: RunOptions): Promise<void> {
@@ -80,7 +82,7 @@ export async function runCommand(options: RunOptions): Promise<void> {
     if (suite.setup.length > 0) {
       console.log(chalk.yellow('▶ Running setup steps...'));
       for (const step of suite.setup) {
-        await executeStep(step, executor, perception, healingEngine, driftDetector, trajectoryLogger, -1, options.verbose);
+        await executeStep(step, executor, perception, healingEngine, driftDetector, trajectoryLogger, -1, options.verbose, options.enhanceDom);
       }
     }
 
@@ -99,7 +101,8 @@ export async function runCommand(options: RunOptions): Promise<void> {
         driftDetector,
         trajectoryLogger,
         i,
-        options.verbose
+        options.verbose,
+        options.enhanceDom
       );
 
       if (success) {
@@ -117,7 +120,7 @@ export async function runCommand(options: RunOptions): Promise<void> {
     if (suite.teardown.length > 0) {
       console.log(chalk.yellow('\n▶ Running teardown steps...'));
       for (const step of suite.teardown) {
-        await executeStep(step, executor, perception, healingEngine, driftDetector, trajectoryLogger, -1, options.verbose);
+        await executeStep(step, executor, perception, healingEngine, driftDetector, trajectoryLogger, -1, options.verbose, options.enhanceDom);
       }
     }
 
@@ -181,7 +184,8 @@ async function executeStep(
   driftDetector: DriftDetector,
   trajectoryLogger: TrajectoryLogger,
   stepIndex: number,
-  verbose?: boolean
+  verbose?: boolean,
+  enhanceDom?: boolean
 ): Promise<boolean> {
   const stepSpinner = ora(`${step.name}`).start();
   const startTime = Date.now();
@@ -205,6 +209,21 @@ async function executeStep(
         elements: [],
         parserVersion: 'mock',
       };
+    }
+
+    // Enhance UIMap with DOM selectors if enabled
+    if (enhanceDom) {
+      try {
+        beforeUIMap = await executor.enhanceUIMapWithDOM(beforeUIMap);
+        if (verbose) {
+          const domElements = beforeUIMap.elements.filter(e => e.source === 'dom' || e.source === 'hybrid');
+          console.log(chalk.cyan(`  [DOM] Enhanced ${domElements.length} elements with DOM selectors`));
+        }
+      } catch (e) {
+        if (verbose) {
+          console.log(chalk.yellow(`  [DOM] Failed to enhance UIMap: ${e}`));
+        }
+      }
     }
 
     // Store element signatures for healing

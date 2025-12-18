@@ -25,7 +25,44 @@ program
   .option('--perception-url <url>', 'Perception service URL', 'http://localhost:8000')
   .option('-o, --output-dir <dir>', 'Output directory for trajectories', './trajectories')
   .option('-v, --verbose', 'Verbose output')
+  .option('--enhance-dom', 'Enable DOM/Accessibility tree enhancement for hybrid element matching')
   .action(runCommand);
+
+program
+  .command('generate')
+  .description('Generate a test from natural language goal')
+  .requiredOption('-g, --goal <goal>', 'Natural language goal (e.g., "Login and create a tournament")')
+  .option('--base-url <url>', 'Base URL for the application', 'http://localhost:3000')
+  .option('-o, --output <path>', 'Output path for generated test YAML')
+  .option('--model <model>', 'Ollama model for planning', 'llama3.1:8b')
+  .option('--ollama-url <url>', 'Ollama API URL', 'http://localhost:11434')
+  .action(async (options) => {
+    const { createAgentPlanner } = await import('../planner/agent.js');
+    const chalk = (await import('chalk')).default;
+    
+    console.log(chalk.blue(`\n🤖 Generating test for: "${options.goal}"\n`));
+    
+    const planner = createAgentPlanner({
+      model: options.model,
+      ollamaUrl: options.ollamaUrl,
+    });
+    
+    try {
+      const yaml = await planner.goalToYAML(options.goal, options.baseUrl);
+      
+      if (options.output) {
+        const fs = await import('fs/promises');
+        await fs.writeFile(options.output, yaml);
+        console.log(chalk.green(`✅ Test saved to: ${options.output}`));
+      } else {
+        console.log(chalk.yellow('Generated test:\n'));
+        console.log(yaml);
+      }
+    } catch (error) {
+      console.error(chalk.red('Failed to generate test:'), error);
+      process.exit(1);
+    }
+  });
 
 program
   .command('record')
