@@ -4,34 +4,12 @@ An internal AI-driven UI automation framework focusing on self-healing, low-cost
 
 ## Overview
 
-This framework uses a YOLO-style perception layer (starting with OmniParser) to locally detect and understand UI elements from screenshots, producing a structured UI map that the test runner can act on deterministically. An LLM is used only as a constrained fallback planner, keeping token usage low.
+This framework uses a vision-based perception layer to locally detect and understand UI elements from screenshots, producing a structured UI map that the test runner can act on deterministically. It supports multiple vision backends:
 
-## Architecture
+- **YOLO + EasyOCR** - Fast, lightweight detection
+- **YOLO + LLaVA** - More accurate text extraction via Vision Language Model (recommended)
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Test Runner CLI                              │
-│  ┌──────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐ │
-│  │ Commands │  │ Playwright   │  │  Healing    │  │  Trajectory  │ │
-│  │ run/rec  │  │ Executor     │  │  Engine     │  │  Logger      │ │
-│  └──────────┘  └──────────────┘  └─────────────┘  └──────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      Perception Service                              │
-│  ┌──────────────────┐    ┌──────────────────┐                       │
-│  │   OmniParser     │───▶│   UIMap Gen      │                       │
-│  └──────────────────┘    └──────────────────┘                       │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-## Packages
-
-- **@ui-automation/shared** - Shared TypeScript schemas (UIMap, Actions, Trajectories)
-- **@ui-automation/runner** - Test runner CLI with Playwright executor
-- **packages/perception** - Python FastAPI service wrapping OmniParser
-- **packages/test-app** - Poker admin panel React app for testing
+An LLM is used only as a constrained fallback planner, keeping token usage low.
 
 ## Quick Start
 
@@ -40,6 +18,7 @@ This framework uses a YOLO-style perception layer (starting with OmniParser) to 
 - Node.js >= 18
 - pnpm >= 8
 - Python 3.11+
+- [Ollama](https://ollama.com) (for LLaVA integration)
 
 ### Installation
 
@@ -49,164 +28,192 @@ pnpm install
 
 # Build all packages
 pnpm build
+
+# Install Python dependencies
+cd packages/perception
+pip install -r requirements.txt
+pip install -r requirements-full.txt  # For YOLO + OCR
 ```
 
-### Running the Test App
+### Setup LLaVA (Recommended)
 
 ```bash
-# Start the poker admin panel
+# Install Ollama (macOS)
+brew install ollama
+
+# Start Ollama service
+ollama serve
+
+# Pull LLaVA model (choose one)
+ollama pull llava-phi3    # 2.9 GB - Fast, good accuracy
+ollama pull llava:13b     # 8.0 GB - Best accuracy, slower
+```
+
+### Run Everything
+
+**Terminal 1 - Test Application:**
+```bash
 cd packages/test-app
 pnpm dev
+# → http://localhost:3000
 ```
 
-### Running the Perception Service
-
+**Terminal 2 - Perception Service:**
 ```bash
-# Using Docker
 cd packages/perception
-docker build -t perception-service .
-docker run -p 8000:8000 perception-service
 
-# Or locally with Python
-cd packages/perception
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn src.server:app --reload
+# With LLaVA (recommended)
+USE_MOCK_PARSER=false USE_LLAVA=true LLAVA_MODEL=llava-phi3 \
+  python -m uvicorn src.server:app --port 8000
+
+# Or with EasyOCR
+USE_MOCK_PARSER=false \
+  python -m uvicorn src.server:app --port 8000
 ```
 
-### Running Tests
+**Terminal 3 - Run Tests:**
+```bash
+cd packages/runner
+
+# Run login test with visible browser
+pnpm start run --test ../../examples/tests/login.test.yaml --no-headless --verbose
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Test Runner CLI                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────┐  │
+│  │   Commands   │  │  Playwright  │  │   Healing   │  │  Trajectory  │  │
+│  │   run/rec    │  │   Executor   │  │   Engine    │  │    Logger    │  │
+│  └──────────────┘  └──────────────┘  └─────────────┘  └──────────────┘  │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │ Screenshots
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       Perception Service (FastAPI)                       │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                         OmniParser                                │   │
+│  │  ┌────────────┐    ┌─────────────────────────────────────────┐   │   │
+│  │  │   YOLO     │───▶│         Text Extraction                  │   │   │
+│  │  │ Detection  │    │  ┌─────────────┐  ┌─────────────────┐   │   │   │
+│  │  └────────────┘    │  │  EasyOCR    │  │     LLaVA       │   │   │   │
+│  │                    │  │  (default)  │  │  (via Ollama)   │   │   │   │
+│  │                    │  └─────────────┘  └─────────────────┘   │   │   │
+│  │                    └─────────────────────────────────────────┘   │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                 │                                        │
+│                                 ▼                                        │
+│                          ┌─────────────┐                                │
+│                          │   UIMap     │                                │
+│                          │  Generator  │                                │
+│                          └─────────────┘                                │
+└─────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Ollama (Local)                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+│  │   llava-phi3    │  │    llava:7b     │  │   llava:13b     │         │
+│  │    (2.9 GB)     │  │    (4.7 GB)     │  │    (8.0 GB)     │         │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@ui-automation/shared` | Shared TypeScript schemas (UIMap, Actions, Trajectories) |
+| `@ui-automation/runner` | Test runner CLI with Playwright executor |
+| `packages/perception` | Python FastAPI service with YOLO + LLaVA/OCR |
+| `packages/test-app` | Poker admin panel React app for testing |
+
+## Configuration
+
+### Perception Service Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_MOCK_PARSER` | `true` | Use mock parser (for development) |
+| `USE_LLAVA` | `false` | Use LLaVA for OCR instead of EasyOCR |
+| `LLAVA_MODEL` | `llava` | LLaVA model: `llava-phi3`, `llava`, `llava:13b` |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API URL |
+| `OMNIPARSER_MODEL_PATH` | `models/` | Path to YOLO model weights |
+
+### LLaVA Model Comparison
+
+| Model | Size | Speed | Accuracy | Best For |
+|-------|------|-------|----------|----------|
+| `llava-phi3` | 2.9 GB | ~5-7s | Good | Development, fast iteration |
+| `llava` | 4.7 GB | ~10s | Better | General use |
+| `llava:13b` | 8.0 GB | ~15-20s | Best | Production, accuracy-critical |
+
+## CLI Commands
 
 ```bash
 # Run a test suite
-cd packages/runner
-pnpm start run --test ../../examples/tests/login.test.yaml
-```
+pnpm start run --test <path> [options]
 
-## Step-by-Step Usage Guide
-
-### 1. Start the Test App (Target Application)
-
-```bash
-cd packages/test-app
-pnpm dev
-```
-
-The poker admin panel will be available at **http://localhost:3000**
-
-### 2. Start the Perception Service
-
-In a new terminal:
-
-```bash
-cd packages/perception
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the server
-uvicorn src.server:app --reload --port 8000
-```
-
-The perception API will be available at **http://localhost:8000**
-
-### 3. Run Test Suites
-
-In a new terminal:
-
-```bash
-cd packages/runner
-
-# Run login test with browser visible
-pnpm start run --test ../../examples/tests/login.test.yaml --no-headless
-
-# Run player search test
-pnpm start run --test ../../examples/tests/player-search.test.yaml --no-headless
-
-# Run tournament creation test
-pnpm start run --test ../../examples/tests/tournament-create.test.yaml --no-headless
-
-# Run in headless mode (faster, no browser window)
-pnpm start run --test ../../examples/tests/login.test.yaml
-
-# Verbose output
-pnpm start run --test ../../examples/tests/login.test.yaml --verbose
-```
-
-### 4. View Trajectories
-
-After running tests, trajectories are saved to the `trajectories/` directory:
-
-```bash
-# List all trajectory runs
-cd packages/runner
-pnpm start list-trajectories
-
-# Trajectories contain:
-# - screenshots/ (before/after each step)
-# - entries/ (individual step data)
-# - trajectory.json (complete run log)
-# - metadata.json (run info)
-```
-
-## CLI Commands Reference
-
-```bash
-ui-runner run [options]          # Run a test suite
-  -t, --test <path>              # Path to test file (required)
-  --headless                     # Run in headless mode (default: true)
-  --no-headless                  # Show browser window
-  -b, --browser <browser>        # chromium | firefox | webkit
-  --base-url <url>               # Override base URL
-  --perception-url <url>         # Perception service URL (default: http://localhost:8000)
-  -o, --output-dir <dir>         # Trajectory output directory
-  -v, --verbose                  # Verbose output
-
-ui-runner record [options]       # Record manual testing (Phase 2)
-ui-runner replay [options]       # Replay a trajectory (Phase 2)
-ui-runner list-trajectories      # List all recorded runs
+Options:
+  -t, --test <path>          Path to test YAML file (required)
+  --headless                 Run in headless mode (default: true)
+  --no-headless              Show browser window
+  -b, --browser <browser>    chromium | firefox | webkit
+  --base-url <url>           Override base URL
+  --perception-url <url>     Perception service URL
+  -o, --output-dir <dir>     Trajectory output directory
+  -v, --verbose              Verbose output
 ```
 
 ## Test File Format
 
-Test suites are defined in YAML:
-
 ```yaml
 metadata:
-  name: My Test Suite
-  description: Description of the test
+  name: Login Flow
+  description: Tests user authentication
   environment:
     baseUrl: http://localhost:3000
     viewport:
       width: 1920
       height: 1080
 
-setup:
-  - name: Setup step
+steps:
+  - name: Navigate to login
     actions:
       - type: NAVIGATE
         url: http://localhost:3000
-
-steps:
-  - name: Click button
-    actions:
-      - type: CLICK
-        target: E001
+      - type: WAIT
+        ms: 1000
       - type: ASSERT
         predicate:
           kind: TEXT_EXISTS
-          value: Success
+          value: Sign In
 
-teardown:
-  - name: Cleanup
+  - name: Enter credentials
     actions:
       - type: CLICK
-        target: E025
+        target: selector:input[type="email"]
+      - type: TYPE
+        target: selector:input[type="email"]
+        text: admin@example.com
+      - type: CLICK
+        target: locator:Sign In
 ```
+
+### Target Selectors
+
+| Prefix | Example | Description |
+|--------|---------|-------------|
+| `text:` | `text:Submit` | Find by OCR-detected text |
+| `selector:` | `selector:input[type="email"]` | CSS selector |
+| `xpath:` | `xpath://button` | XPath selector |
+| `locator:` | `locator:Sign In` | Playwright getByRole |
+| `label:` | `label:Email` | Playwright getByLabel |
+| `E###` | `E001` | Element ID from UIMap |
 
 ### Available Actions
 
@@ -232,25 +239,25 @@ teardown:
 | `TEXT_NOT_EXISTS` | Text is not present |
 | `ELEMENT_EXISTS` | Element ID exists in UIMap |
 | `URL_CONTAINS` | URL contains value |
+| `URL_NOT_CONTAINS` | URL does not contain value |
 | `TITLE_CONTAINS` | Page title contains value |
 
-## Key Concepts
+## Key Features
 
-### UIMap
+### Vision-Based Element Detection
 
-A structured representation of UI elements detected in a screenshot:
+Screenshots are processed through YOLO for bounding box detection and LLaVA/EasyOCR for text extraction, producing a structured UIMap:
 
 ```json
 {
-  "screen": { "width": 1920, "height": 1080, "timestamp": "...", "hash": "..." },
+  "screen": { "width": 1920, "height": 1080 },
   "elements": [
     {
-      "id": "E12",
-      "bbox": [100, 200, 150, 40],
+      "id": "E001",
+      "boundingBox": { "x": 100, "y": 200, "width": 150, "height": 40 },
       "role": "button",
-      "text": "Submit",
-      "confidence": 0.92,
-      "interactable": true
+      "text": "Sign In",
+      "confidence": 0.92
     }
   ]
 }
@@ -261,8 +268,15 @@ A structured representation of UI elements detected in a screenshot:
 The framework automatically heals broken element references by:
 1. Text/caption similarity matching
 2. Role matching
-3. Approximate bbox proximity
+3. Approximate bounding box proximity
 4. Neighbor anchor constraints
+
+### Drift Detection
+
+Alerts you when UI changes between test runs:
+- Element count changes
+- Layout shifts
+- New/removed elements
 
 ### Trajectory Logging
 
@@ -273,46 +287,34 @@ Every test step records:
 - Result and timing
 - Healing events
 
-## OmniParser Integration
-
-The framework supports real UI element detection using Microsoft's OmniParser.
-
-### Quick Setup
-
-```bash
-# 1. Install full dependencies
-cd packages/perception
-pip install -r requirements-full.txt
-
-# 2. Download model weights (optional - falls back to YOLO + OCR)
-mkdir -p models/icon_detect
-# Download from: https://huggingface.co/microsoft/OmniParser
-
-# 3. Run with real detection
-USE_MOCK_PARSER=false uvicorn src.server:app --port 8000
-```
-
-### How It Works
+## Example Test Output
 
 ```
-Screenshot → YOLO Detection → Bounding Boxes
-                           ↓
-                    EasyOCR (text)
-                           ↓
-                    UIMap JSON
+✔ Perception service ready (omniparser)
+
+📋 Test Run: run_abc123
+
+▶ Running test steps...
+✔ Navigate to login page (20s)
+✔ Verify login form elements (26s)
+✔ Enter credentials and click Sign In (15s)
+✔ Verify successful login (43s)
+✔ Logout (45s)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Test Summary
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total Steps: 5
+Passed: 5
+Failed: 0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### Configuration
+## Documentation
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `USE_MOCK_PARSER` | `true` | Use mock parser for testing |
-| `OMNIPARSER_MODEL_PATH` | `models/` | Path to model weights |
-| `OMNIPARSER_DEVICE` | `auto` | `cuda`, `cpu`, or `auto` |
-
-See [OMNIPARSER_INTEGRATION.md](packages/perception/OMNIPARSER_INTEGRATION.md) for detailed setup instructions.
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture
+- [packages/perception/OMNIPARSER_INTEGRATION.md](packages/perception/OMNIPARSER_INTEGRATION.md) - OmniParser setup guide
 
 ## License
 
 Internal use only.
-
